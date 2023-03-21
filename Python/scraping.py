@@ -38,6 +38,8 @@ for tr in trs[1:]:
 
 print(stationpassengers)
 
+ds = pd.DataFrame(stationpassengers)
+
 
 # Open API
 
