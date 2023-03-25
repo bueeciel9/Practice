@@ -33,7 +33,7 @@ plt.show()
 
 # Hypothesis
 
-velocity_variance = 0.2
+velocity_variance = 0.2        
 LINES = 5
 
 
