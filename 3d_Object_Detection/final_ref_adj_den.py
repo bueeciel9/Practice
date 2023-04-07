@@ -31,6 +31,9 @@ def find_adjacent_voxel_indices(voxel_centers, reference_voxel, voxel_size):
 
 def visualize_voxelized_point_cloud_with_reference_and_adjacent(voxel_centers, density, reference_voxels, voxel_size):
     colors = np.zeros((voxel_centers.shape[0], 3))
+    # colors = np.random.rand(voxel_centers.shape[0], 3)
+
+    # Color all voxels in blue
 
     for reference_voxel in reference_voxels:
         adjacent_indices = find_adjacent_voxel_indices(voxel_centers, reference_voxel, voxel_size)
