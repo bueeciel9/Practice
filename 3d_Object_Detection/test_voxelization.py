@@ -117,6 +117,8 @@ def main_pytorch_voxel_gen_cuda():
         print(pc[:10])
         print(indices_th_voxel_id_np[:, ::-1] / 4)
 
+        
+
 
 def main_gather_features_by_pc_voxel_id():
     np.random.seed(50051)
@@ -146,3 +148,5 @@ def main():
 if __name__ == '__main__':
     main()
 
+# if __name__ == '__main__':
+#     main()
