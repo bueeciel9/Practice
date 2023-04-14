@@ -16,6 +16,16 @@ def voxelization(point_cloud_data, voxel_size, point_cloud_range, max_points_per
     voxel_centers = voxel_grid['coordinates'][:, [2, 1, 0]] * voxel_size + voxel_size / 2
     return voxel_centers
 
+def voxelization2(point_cloud_data, voxel_size, point_cloud_range, max_points_per_voxel=30):
+    voxel_grid = points_to_voxel(point_cloud_data,
+                                 voxel_size=voxel_size,
+                                 coors_range=point_cloud_range,
+                                 max_points=max_points_per_voxel,
+                                 max_voxels=20000)
+    
+    voxel_centers = voxel_grid['coordinates'][:, [2, 1, 0]] * voxel_size + voxel_size / 2
+    return voxel_centers
+
 def visualize_voxelized_point_cloud(voxel_centers):
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(voxel_centers)
