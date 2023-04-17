@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-
+import time
 from ...ops.votr_ops import votr_utils
 
 
@@ -418,6 +418,47 @@ class DADA3d(Attention3d):
         return dict(zip(list(num_points_per_voxel_dict.keys()), density.tolist()))
 
 
+    # def find_reference_and_adjacent_voxel_indices(self, voxel_centers, reference_voxels, voxel_size, num_points, max_num_points_per_voxel):
+    #     reference_indices = []
+    #     adjacent_indices_list = []
+    #     highest_density_indices_list = []
+
+    #     device = voxel_centers.device
+    #     density = self.calculate_density(num_points, max_num_points_per_voxel)
+
+
+    #     for reference_voxel in reference_voxels:
+    #         reference_voxel_tensor = reference_voxel.clone().detach().to(dtype=torch.float, device=device)
+    #         distances = torch.abs(voxel_centers - reference_voxel_tensor)
+    #         reference_idx = torch.where(torch.all(distances < 1e-6, dim=1))[0]
+
+    #         adjacent_indices = []
+    #         if reference_idx.numel() != 0:
+    #             reference_indices.append(reference_idx[0].item())
+
+    #             for i, center in enumerate(voxel_centers):
+    #                 diff = torch.abs(center - reference_voxel_tensor)
+    #                 conditions = torch.logical_and(diff >= torch.tensor(voxel_size, device = device), diff <= torch.tensor(voxel_size, device = device) * 2)
+    #                 if torch.all(conditions):
+    #                     adjacent_indices.append(i)
+
+    #             adjacent_indices_list.append(adjacent_indices)
+
+    #             if adjacent_indices:
+    #                 adjacent_indices_tensor = torch.tensor(adjacent_indices, device=device)
+            
+    #                 # Check if all adjacent_indices_tensor are in the num_points_per_voxel_dict
+    #                 if all(idx.item() in num_points for idx in adjacent_indices_tensor):
+    #                     density_adjacent_indices = torch.tensor([num_points[idx.item()] for idx in adjacent_indices_tensor], device=device)
+    #                     highest_density_idx_tuple = torch.where(density_adjacent_indices == torch.max(density_adjacent_indices))
+    #                     highest_density_idx = highest_density_idx_tuple[0].flatten()
+    #                 else:
+    #                     highest_density_idx = torch.tensor([], device=device)
+
+    #                 highest_density_indices_list.append(highest_density_idx)
+
+
+    #     return reference_indices, adjacent_indices_list, highest_density_indices_list
     def find_reference_and_adjacent_voxel_indices(self, voxel_centers, reference_voxels, voxel_size, num_points, max_num_points_per_voxel):
         reference_indices = []
         adjacent_indices_list = []
@@ -426,42 +467,48 @@ class DADA3d(Attention3d):
         device = voxel_centers.device
         density = self.calculate_density(num_points, max_num_points_per_voxel)
 
+        voxel_centers_expanded = voxel_centers.unsqueeze(0)
+        reference_voxels_expanded = reference_voxels.unsqueeze(1)
 
-        for reference_voxel in reference_voxels:
-            reference_voxel_tensor = reference_voxel.clone().detach().to(dtype=torch.float, device=device)
-            distances = torch.abs(voxel_centers - reference_voxel_tensor)
-            reference_idx = torch.where(torch.all(distances < 1e-6, dim=1))[0]
+        # Compute absolute distances between all pairs of voxel centers and reference voxels
+        distances = torch.abs(voxel_centers_expanded - reference_voxels_expanded)
 
-            adjacent_indices = []
+        for idx, reference_voxel in enumerate(reference_voxels):
+            # Find the reference index
+            # print(f'Processing reference voxel {idx+1}/{len(reference_voxels)}')
+
+            reference_idx = torch.nonzero(torch.all(distances[idx] < 1e-6, dim=1), as_tuple=True)[0]
+
             if reference_idx.numel() != 0:
                 reference_indices.append(reference_idx[0].item())
 
-                for i, center in enumerate(voxel_centers):
-                    diff = torch.abs(center - reference_voxel_tensor)
-                    conditions = torch.logical_and(diff >= torch.tensor(voxel_size, device = device), diff <= torch.tensor(voxel_size, device = device) * 2)
-                    if torch.all(conditions):
-                        adjacent_indices.append(i)
-
+                # Find the adjacent indices
+                voxel_size_tensor = torch.tensor(voxel_size, device=device)
+                conditions = torch.logical_and(distances[idx] >= voxel_size_tensor, distances[idx] <= voxel_size_tensor * 2)
+                adjacent_indices = torch.nonzero(torch.all(conditions, dim=1), as_tuple=True)[0].tolist()
                 adjacent_indices_list.append(adjacent_indices)
 
+                # Find the highest density index
                 if adjacent_indices:
                     adjacent_indices_tensor = torch.tensor(adjacent_indices, device=device)
-            
-                    # Check if all adjacent_indices_tensor are in the num_points_per_voxel_dict
                     if all(idx.item() in num_points for idx in adjacent_indices_tensor):
                         density_adjacent_indices = torch.tensor([num_points[idx.item()] for idx in adjacent_indices_tensor], device=device)
-                        highest_density_idx_tuple = torch.where(density_adjacent_indices == torch.max(density_adjacent_indices))
-                        highest_density_idx = highest_density_idx_tuple[0].flatten()
+                        highest_density_idx = torch.nonzero(density_adjacent_indices == torch.max(density_adjacent_indices), as_tuple=True)[0].flatten()
                     else:
                         highest_density_idx = torch.tensor([], device=device)
 
                     highest_density_indices_list.append(highest_density_idx)
 
-
         return reference_indices, adjacent_indices_list, highest_density_indices_list
+
 
     # Need to Check. 
     def forward(self, sp_tensor):
+
+        # check the time before find_reference_and_adjacent_voxel_indices
+        # print('DADA3d forward start')
+        # start_time = time.time()
+
         if not sp_tensor.gather_dict:
             sp_tensor.gather_dict = self.create_gather_dict(self.attention_modes, sp_tensor.map_table, sp_tensor.indices, sp_tensor.spatial_shape)
 
@@ -490,6 +537,13 @@ class DADA3d(Attention3d):
         # num_points = sp_tensor.indices.size(0)
         max_num_points_per_voxel = sp_tensor.features.size(1)
 
+        # print('DADA3d forward end')
+        # print('DADA3d forward time : ', time.time() - start_time)
+
+        # check the time before find_reference_and_adjacent_voxel_indices
+        # print('DADA3d find_reference_and_adjacent_voxel_indices start')
+        # start_time = time.time()
+
         # Find reference and adjacent voxel indices
         voxel_centers = self.with_coords(sp_tensor.indices, sp_tensor.point_cloud_range, sp_tensor.voxel_size)
         num_random_voxels = 100
@@ -497,10 +551,22 @@ class DADA3d(Attention3d):
         reference_voxels = voxel_centers[random_voxel_indices]
         reference_indices, adjacent_indices_list, highest_density_indices_list = self.find_reference_and_adjacent_voxel_indices(voxel_centers, reference_voxels, sp_tensor.voxel_size, num_points_per_voxel_dict, max_num_points_per_voxel )
 
+        # print('DADA3d find_reference_and_adjacent_voxel_indices end')
+        # print('DADA3d find_reference_and_adjacent_voxel_indices time : ', time.time() - start_time)
+
+        # # check the time getting highest density voxel
+        # print('DADA3d getting highest density voxel start')
+        # start_time = time.time()
+
         # Move reference voxel's position to the highest density voxel's position
         for idx, highest_density_indices in zip(reference_indices, highest_density_indices_list):
-            if highest_density_indices.size != 0:
+            if highest_density_indices.numel() > 0:
                 sp_tensor.indices[idx] = sp_tensor.indices[highest_density_indices[0]]
+
+        
+        # check the time getting highest density voxel
+        # print('DADA3d getting highest density voxel end')
+        # print('DADA3d getting highest density voxel time : ', time.time() - start_time)
         
 
         # I need to put the deformed voxel's key and value.
